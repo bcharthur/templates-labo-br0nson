@@ -1,0 +1,50 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}> br0nson{% endblock %}
+
+{% block body %}
+    <div id="terminal-title" style="font-family: monospace; font-size: 48px; text-align: center; padding: 20px;">
+        <!-- Le titre sera écrit ici par JavaScript -->
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const terminalTitle = document.getElementById('terminal-title');
+            const text = '> br0nson';
+            let index = 0;
+
+            function typeText() {
+                if (index < text.length) {
+                    terminalTitle.textContent += text[index];
+                    index++;
+                    setTimeout(typeText, 100); // Ajustez la vitesse ici
+                } else {
+                    addBlinkingCursor();
+                }
+            }
+
+            function addBlinkingCursor() {
+                const cursor = document.createElement('span');
+                cursor.textContent = '_';
+                cursor.style.animation = 'blink 1s step-end infinite';
+                terminalTitle.appendChild(cursor);
+            }
+
+            typeText();
+        });
+    </script>
+
+    <style>
+        @keyframes blink {
+            50% {
+                opacity: 0;
+            }
+        }
+    </style>
+
+    <div style="margin-top: 20px; display: flex; justify-content: center;">
+        <img src="{{ asset('img/br0nson.gif') }}" alt="br0nson gif" style="width: 50%; max-width: 800px;">
+    </div>
+
+    <p style="margin-top: 20px; display: flex; justify-content: center;">Bienvenue sur mon site</p>
+{% endblock %}
