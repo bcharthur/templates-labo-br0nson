@@ -1,4 +1,4 @@
-// public/js/downloader/script-ytb.js
+// public/js/yt-downloader/script-ytb.js
 
 document.getElementById('search-btn').addEventListener('click', function () {
     const videoUrlInput = document.getElementById('video-url').value.trim();
