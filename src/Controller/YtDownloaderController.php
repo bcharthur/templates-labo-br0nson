@@ -1,5 +1,5 @@
 <?php
-// src/Controller/DownloaderController.php
+// src/Controller/YtDownloaderController.php
 
 namespace App\Controller;
 
@@ -14,7 +14,7 @@ use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 use Symfony\Component\Process\Process;
 use Symfony\Component\Routing\Annotation\Route;
 
-class DownloaderController extends AbstractController
+class YtDownloaderController extends AbstractController
 {
     private $logger;
 
@@ -23,15 +23,15 @@ class DownloaderController extends AbstractController
         $this->logger = $logger;
     }
 
-    #[Route('/downloader', name: 'app_downloader')]
+    #[Route('/yt-downloader', name: 'app_yt_downloader')]
     public function index(): Response
     {
-        return $this->render('downloader/index.html.twig', [
-            'controller_name' => 'DownloaderController',
+        return $this->render('yt-downloader/index.html.twig', [
+            'controller_name' => 'YtDownloaderController',
         ]);
     }
 
-    #[Route('/downloader/get-video-info', name: 'get_video_info', methods: ['POST'])]
+    #[Route('/yt-downloader/get-video-info', name: 'get_video_info', methods: ['POST'])]
     public function getVideoInfo(Request $request): JsonResponse
     {
         $data = json_decode($request->getContent(), true);
@@ -58,7 +58,7 @@ class DownloaderController extends AbstractController
         $pythonPath = $projectDir . '/venv/Scripts/python.exe';
 
         // Chemin vers le script Python
-        $scriptPath = $projectDir . '/templates/downloader/scripts/downloader.py';
+        $scriptPath = $projectDir . '/templates/yt-downloader/scripts/yt-downloader.py';
 
         // Vérifier que l'exécutable Python existe
         if (!file_exists($pythonPath)) {
@@ -120,7 +120,7 @@ class DownloaderController extends AbstractController
         ]);
     }
 
-    #[Route('/downloader/download-video', name: 'download_video')]
+    #[Route('/yt-downloader/download-video', name: 'download_video')]
     public function downloadVideo(Request $request): Response
     {
         $url = $request->query->get('url');
@@ -148,7 +148,7 @@ class DownloaderController extends AbstractController
         $pythonPath = $projectDir . '/venv/Scripts/python.exe';
 
         // Chemin vers le script Python
-        $scriptPath = $projectDir . '/templates/downloader/scripts/downloader.py';
+        $scriptPath = $projectDir . '/templates/yt-downloader/scripts/yt-downloader.py';
 
         // Vérifier que l'exécutable Python existe
         if (!file_exists($pythonPath)) {
