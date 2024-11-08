@@ -23,7 +23,7 @@ class YtDownloaderController extends AbstractController
         $this->logger = $logger;
     }
 
-    #[Route('/yt-downloader', name: 'app_downloader')]
+    #[Route('/yt-downloader', name: 'app_yt_downloader')]
     public function index(): Response
     {
         return $this->render('yt-downloader/index.html.twig', [
