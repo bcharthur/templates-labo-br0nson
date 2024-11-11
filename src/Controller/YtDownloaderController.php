@@ -58,7 +58,7 @@ class YtDownloaderController extends AbstractController
         $pythonPath = $projectDir . '/venv/Scripts/python.exe';
 
         // Chemin vers le script Python
-        $scriptPath = $projectDir . '/templates/yt-downloader/scripts/yt-downloader.py';
+        $scriptPath = $projectDir . '/templates/yt-downloader/scripts/downloader.py';
 
         // Vérifier que l'exécutable Python existe
         if (!file_exists($pythonPath)) {
@@ -148,7 +148,7 @@ class YtDownloaderController extends AbstractController
         $pythonPath = $projectDir . '/venv/Scripts/python.exe';
 
         // Chemin vers le script Python
-        $scriptPath = $projectDir . '/templates/yt-downloader/scripts/yt-downloader.py';
+        $scriptPath = $projectDir . '/templates/yt-downloader/scripts/downloader.py';
 
         // Vérifier que l'exécutable Python existe
         if (!file_exists($pythonPath)) {
