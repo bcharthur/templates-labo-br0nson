@@ -10,11 +10,14 @@
                 <!-- Barre de recherche -->
                 <div class="input-group mb-3">
                     <input type="text" class="form-control" placeholder="Entrez l'URL de la vidéo" id="video-url">
-                    <select class="form-select" id="format-select">
+
+                    <!-- Sélecteur de format réduit -->
+                    <select class="form-select flex-grow-0 flex-shrink-0 w-auto me-2" id="format-select">
                         <option value="mp4" selected>MP4</option>
                         <option value="webm">WEBM</option>
                         <option value="mkv">MKV</option>
                     </select>
+
                     <button class="btn btn-primary" type="button" id="search-btn">
                         <span id="search-btn-text">Rechercher</span>
                         <span id="search-btn-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
