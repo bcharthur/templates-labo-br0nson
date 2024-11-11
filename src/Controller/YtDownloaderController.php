@@ -5,12 +5,11 @@ namespace App\Controller;
 
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use Symfony\Component\Filesystem\Filesystem;
-use Symfony\Component\Filesystem\Exception\IOExceptionInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
+use Symfony\Component\Process\Exception\ProcessFailedException;
 use Symfony\Component\Process\Process;
 use Symfony\Component\Routing\Annotation\Route;
 
@@ -26,9 +25,7 @@ class YtDownloaderController extends AbstractController
     #[Route('/yt-downloader', name: 'app_yt_downloader')]
     public function index(): Response
     {
-        return $this->render('yt-downloader/index.html.twig', [
-            'controller_name' => 'YtDownloaderController',
-        ]);
+        return $this->render('yt-downloader/index.html.twig');
     }
 
     #[Route('/yt-downloader/get-video-info', name: 'get_video_info', methods: ['POST'])]
@@ -41,26 +38,12 @@ class YtDownloaderController extends AbstractController
             return new JsonResponse(['success' => false, 'message' => 'URL invalide.']);
         }
 
-        // Normaliser l'URL YouTube
-        $normalizedUrl = $this->normalizeYouTubeUrl($url);
-
-        if (!$normalizedUrl) {
-            return new JsonResponse(['success' => false, 'message' => 'URL YouTube invalide ou non supportée.']);
-        }
-
-        // Vider le cache des miniatures avant la nouvelle recherche
-        $this->clearThumbnailCache();
-
-        // Obtenir le chemin absolu du répertoire du projet
         $projectDir = $this->getParameter('kernel.project_dir');
-
-        // Chemin vers l'exécutable Python intégré
         $pythonPath = $projectDir . '/venv/Scripts/python.exe';
-
-        // Chemin vers le script Python
         $scriptPath = $projectDir . '/templates/yt-downloader/scripts/downloader.py';
+        $outputDir = $projectDir . '/public/images/cache/';
 
-        // Vérifier que l'exécutable Python existe
+        // Vérifier l'existence de l'exécutable Python
         if (!file_exists($pythonPath)) {
             $this->logger->error('Python executable not found at: ' . $pythonPath);
             return new JsonResponse([
@@ -69,7 +52,7 @@ class YtDownloaderController extends AbstractController
             ]);
         }
 
-        // Vérifier que le script Python existe
+        // Vérifier l'existence du script Python
         if (!file_exists($scriptPath)) {
             $this->logger->error('Python script not found at: ' . $scriptPath);
             return new JsonResponse([
@@ -78,18 +61,16 @@ class YtDownloaderController extends AbstractController
             ]);
         }
 
-        // Initialiser le processus Python
-        $process = new Process([$pythonPath, $scriptPath, $normalizedUrl]);
+        // Exécuter le script Python pour obtenir les informations de la vidéo
+        $process = new Process([$pythonPath, $scriptPath, '--info', $url, $outputDir]);
         $process->run();
 
-        // Récupérer les sorties pour le débogage
+        // Capturer la sortie et les erreurs du processus
         $output = $process->getOutput();
         $errorOutput = $process->getErrorOutput();
 
-        $this->logger->info('Python path: ' . $pythonPath);
-        $this->logger->info('Script path: ' . $scriptPath);
-        $this->logger->info('Process output: ' . $output);
-        $this->logger->error('Process error output: ' . $errorOutput);
+        $this->logger->info('Output du script : ' . $output);
+        $this->logger->error('Erreur du script : ' . $errorOutput);
 
         if (!$process->isSuccessful()) {
             return new JsonResponse([
@@ -99,9 +80,11 @@ class YtDownloaderController extends AbstractController
             ]);
         }
 
-        $videoInfo = json_decode($output, true);
-
-        if (!$videoInfo) {
+        // Décoder la sortie JSON
+        try {
+            $videoInfo = json_decode($output, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $e) {
+            $this->logger->error('Erreur de décodage JSON : ' . $e->getMessage());
             return new JsonResponse([
                 'success' => false,
                 'message' => 'Impossible de décoder la sortie du script.',
@@ -109,142 +92,73 @@ class YtDownloaderController extends AbstractController
             ]);
         }
 
-        // Construire l'URL publique de la miniature
-        $thumbnailFilename = $videoInfo['thumbnail'];
-        $thumbnailUrl = $thumbnailFilename ? $request->getBasePath() . '/images/cache/' . $thumbnailFilename : null;
+        // Vérifier s'il y a une erreur dans les informations vidéo
+        if (isset($videoInfo['error'])) {
+            return new JsonResponse([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des informations de la vidéo.',
+                'error' => $videoInfo['error'],
+            ]);
+        }
+
+        // Générer l'URL publique de la miniature
+        $thumbnailPath = $videoInfo['thumbnail'] ?? null;
+        $thumbnailUrl = $thumbnailPath ? $request->getSchemeAndHttpHost() . '/images/cache/' . basename($thumbnailPath) : null;
 
         return new JsonResponse([
             'success' => true,
-            'thumbnail' => $thumbnailUrl,
-            'title' => $videoInfo['title']
+            'title' => $videoInfo['title'] ?? 'Titre non disponible',
+            'thumbnail' => $thumbnailUrl
         ]);
     }
 
-    #[Route('/yt-downloader/download-video', name: 'download_video')]
+    #[Route('/yt-downloader/download-video', name: 'download_video', methods: ['POST'])]
     public function downloadVideo(Request $request): Response
     {
-        $url = $request->query->get('url');
+        $data = json_decode($request->getContent(), true);
+        $url = $data['url'] ?? '';
+        $format = $data['format'] ?? 'mp4';
+        $title = $data['title'] ?? 'video';
 
         if (!$url) {
             return new Response('URL invalide.', 400);
         }
 
-        // Normaliser l'URL YouTube
-        $normalizedUrl = $this->normalizeYouTubeUrl($url);
-
-        if (!$normalizedUrl) {
-            return new Response('URL YouTube invalide ou non supportée.', 400);
-        }
-
-        // Définir un chemin de fichier temporaire
-        $tempDir = sys_get_temp_dir();
-        $filename = uniqid('video_') . '.mp4';
-        $tempFile = $tempDir . DIRECTORY_SEPARATOR . $filename;
-
-        // Obtenir le chemin absolu du répertoire du projet
         $projectDir = $this->getParameter('kernel.project_dir');
+        $safeTitle = preg_replace('/[^A-Za-z0-9 _-]/', '', $title);
+        $outputFile = $projectDir . '/public/videos/' . $safeTitle . " [$format].$format";
 
-        // Chemin vers l'exécutable Python intégré
         $pythonPath = $projectDir . '/venv/Scripts/python.exe';
-
-        // Chemin vers le script Python
         $scriptPath = $projectDir . '/templates/yt-downloader/scripts/downloader.py';
 
-        // Vérifier que l'exécutable Python existe
+        // Vérifier l'existence de l'exécutable Python
         if (!file_exists($pythonPath)) {
             $this->logger->error('Python executable not found at: ' . $pythonPath);
             return new Response('Python executable not found.', 500);
         }
 
-        // Vérifier que le script Python existe
+        // Vérifier l'existence du script Python
         if (!file_exists($scriptPath)) {
             $this->logger->error('Python script not found at: ' . $scriptPath);
             return new Response('Python script not found.', 500);
         }
 
-        // Initialiser le processus Python pour télécharger la vidéo
-        $process = new Process([$pythonPath, $scriptPath, '--download', $normalizedUrl, $tempFile]);
+        // Exécuter le script Python pour télécharger la vidéo
+        $process = new Process([$pythonPath, $scriptPath, '--download', $url, $outputFile, $format]);
         $process->run();
 
-        if (!$process->isSuccessful() || !file_exists($tempFile)) {
-            $errorOutput = $process->getErrorOutput();
+        // Capturer les erreurs du processus
+        $errorOutput = $process->getErrorOutput();
+
+        $this->logger->info('Output du script : ' . $process->getOutput());
+        $this->logger->error('Erreur du script : ' . $errorOutput);
+
+        if (!$process->isSuccessful() || !file_exists($outputFile)) {
             return new Response('Erreur lors du téléchargement de la vidéo : ' . $errorOutput, 500);
         }
 
-        // Retourner le fichier en réponse pour le téléchargement
-        return $this->file(
-            $tempFile,
-            basename($tempFile),
-            ResponseHeaderBag::DISPOSITION_ATTACHMENT
-        )->deleteFileAfterSend(true);
-    }
-
-    /**
-     * Vider le cache des miniatures.
-     */
-    private function clearThumbnailCache()
-    {
-        // Obtenir le chemin absolu du répertoire de cache des miniatures
-        $projectDir = $this->getParameter('kernel.project_dir');
-        $cacheDir = $projectDir . '/public/images/cache/';
-
-        $filesystem = new Filesystem();
-
-        try {
-            if ($filesystem->exists($cacheDir)) {
-                // Supprimer les fichiers à l'intérieur du répertoire de cache
-                $files = glob($cacheDir . '*');
-                if ($files !== false) {
-                    foreach ($files as $file) {
-                        if (is_file($file)) {
-                            $filesystem->remove($file);
-                        }
-                    }
-                }
-            }
-        } catch (IOExceptionInterface $exception) {
-            $this->logger->error("Erreur lors de la suppression du cache des miniatures : " . $exception->getMessage());
-            // Vous pouvez gérer l'erreur selon vos besoins, par exemple en renvoyant une réponse d'erreur
-        }
-    }
-
-    /**
-     * Normaliser les URLs YouTube.
-     *
-     * Accepte les formats :
-     * - https://www.youtube.com/watch?v=UaH8cAGdjzw
-     * - https://youtu.be/UaH8cAGdjzw
-     *
-     * Retourne l'URL standard ou false si le format n'est pas reconnu.
-     */
-    private function normalizeYouTubeUrl(string $url)
-    {
-        // Parse l'URL
-        $parsedUrl = parse_url($url);
-
-        if (!isset($parsedUrl['host'])) {
-            return false;
-        }
-
-        // Gérer les différents formats d'URL YouTube
-        if (strpos($parsedUrl['host'], 'youtu.be') !== false) {
-            // Format raccourci : https://youtu.be/UaH8cAGdjzw
-            if (isset($parsedUrl['path'])) {
-                $videoId = ltrim($parsedUrl['path'], '/');
-                return "https://www.youtube.com/watch?v={$videoId}";
-            }
-        } elseif (strpos($parsedUrl['host'], 'youtube.com') !== false) {
-            // Format standard : https://www.youtube.com/watch?v=UaH8cAGdjzw
-            if (isset($parsedUrl['query'])) {
-                parse_str($parsedUrl['query'], $queryParams);
-                if (isset($queryParams['v'])) {
-                    $videoId = $queryParams['v'];
-                    return "https://www.youtube.com/watch?v={$videoId}";
-                }
-            }
-        }
-
-        // URL non reconnue
-        return false;
+        // Retourner le fichier pour téléchargement et supprimer le fichier après l'envoi
+        return $this->file($outputFile, basename($outputFile), ResponseHeaderBag::DISPOSITION_ATTACHMENT)
+            ->deleteFileAfterSend(true);
     }
 }
